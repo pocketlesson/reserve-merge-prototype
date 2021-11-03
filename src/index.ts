@@ -1,10 +1,11 @@
 import axios from "axios";
-import Auth from "types/auth";
 import { PR, Comment } from "./types/pr";
 
-const getPR = async (auth: Auth, prURL: string): Promise<PR> => {
+const getPR = async (token: string, prURL: string): Promise<PR> => {
   const prResponse = await axios.get(prURL, {
-    auth,
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
   });
   if (prResponse.status !== 200) {
     console.error(prResponse.data);
@@ -14,8 +15,10 @@ const getPR = async (auth: Auth, prURL: string): Promise<PR> => {
   return prResponse.data;
 };
 
-const getPRComments = async (auth: Auth, pr: PR): Promise<Comment[]> => {
-  const commentsResponse = await axios.get(pr._links.comments.href, { auth });
+const getPRComments = async (token: string, pr: PR): Promise<Comment[]> => {
+  const commentsResponse = await axios.get(pr._links.comments.href, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   if (commentsResponse.status !== 200) {
     throw new Error(commentsResponse.statusText);
   }
@@ -23,7 +26,7 @@ const getPRComments = async (auth: Auth, pr: PR): Promise<Comment[]> => {
   return comments;
 };
 
-const isMergeReserved = async (auth: Auth, pr: PR, keyword: string) => {
+const isMergeReserved = async (token: string, pr: PR, keyword: string) => {
   if (!pr.mergeable) {
     return false;
   }
@@ -34,7 +37,7 @@ const isMergeReserved = async (auth: Auth, pr: PR, keyword: string) => {
     return false;
   }
 
-  const comments = await getPRComments(auth, pr);
+  const comments = await getPRComments(token, pr);
   const commentsBody = comments.map((comment) => comment.body);
 
   return commentsBody.includes(keyword);
@@ -42,25 +45,23 @@ const isMergeReserved = async (auth: Auth, pr: PR, keyword: string) => {
 
 const main = async () => {
   const env = process.env;
-  const auth = {
-    username: env.GITHUB_USERNAME || "",
-    password: env.GITHUB_PASSWORD || "",
-  };
   const keyword = "reserve merge";
 
   const githubAPIURL = `https://api.github.com`;
   const prURL = `${githubAPIURL}/repos/${env.REPOSITORY_OWNER}/${env.REPOSITORY_NAME}/pulls/${env.PR_NUMBER}`;
   const prMergeURL = `${prURL}/merge`;
 
-  const pr = await getPR(auth, prURL);
+  const token = env.GITHUB_TOKEN || "";
 
-  const mergeable = await isMergeReserved(auth, pr, keyword);
+  const pr = await getPR(token, prURL);
+
+  const mergeable = await isMergeReserved(token, pr, keyword);
   if (!mergeable) {
     console.log("Merging is not reserved.");
     return;
   }
 
-  axios.put(prMergeURL, {}, { auth });
+  axios.put(prMergeURL, {}, { headers: { Authorization: `Bearer ${token}` } });
   console.log(`PR #${env.PR_NUMBER} merged.`);
 };
 
